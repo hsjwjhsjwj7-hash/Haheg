@@ -1,0 +1,58 @@
+name: RDP-Ngrok
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Enable Remote Desktop
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                           -Name "fDenyTSConnections" -Value 0 -Force
+          netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+
+      - name: Create RDP User
+        run: |
+          $password = "Rdp@$(Get-Random -Maximum 99999)"
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          echo "USERNAME=RDP" >> $env:GITHUB_ENV
+          echo "PASSWORD=$password" >> $env:GITHUB_ENV
+
+      - name: Download Ngrok
+        run: |
+          Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath $env:USERPROFILE\ngrok -Force
+          echo "$env:USERPROFILE\ngrok" >> $env:GITHUB_PATH
+
+      - name: Auth Ngrok
+        run: ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Start Ngrok Tunnel (RDP Port 3389)
+        run: Start-Process ngrok.exe "tcp 3389" -NoNewWindow
+
+      - name: Fetch Ngrok Public URL
+        run: |
+          Start-Sleep -Seconds 15
+          $tunnel = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels
+          $url = $tunnel.tunnels[0].public_url
+          echo "NGROK_URL=$url" >> $env:GITHUB_ENV
+          Write-Host "==========================="
+          Write-Host "✅ RDP Tersedia!"
+          Write-Host "Address: $url"
+          Write-Host "User: $env:USERNAME"
+          Write-Host "Pass: $env:PASSWORD"
+          Write-Host "==========================="
+
+      - name: Keep Session Alive
+        run: |
+          while ($true) {
+            Write-Host "[$(Get-Date)] RDP Active"
+            Start-Sleep -Seconds 300
+          }
