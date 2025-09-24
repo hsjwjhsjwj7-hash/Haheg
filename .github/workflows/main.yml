@@ -17,11 +17,20 @@ jobs:
 
       - name: Create RDP User
         run: |
-          $password = "Rdp@$(Get-Random -Maximum 99999)"
+          # Buat password kuat (huruf besar, kecil, angka, simbol)
+          $password = "Rdp@" + (Get-Random -Maximum 99999999)
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          
+          # Hapus user RDP lama kalau ada
+          if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+            Remove-LocalUser -Name "RDP"
+          }
+
+          # Buat user baru
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+
           echo "USERNAME=RDP" >> $env:GITHUB_ENV
           echo "PASSWORD=$password" >> $env:GITHUB_ENV
 
